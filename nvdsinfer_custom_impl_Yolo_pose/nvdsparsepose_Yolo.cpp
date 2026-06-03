@@ -91,6 +91,9 @@ struct PoseTensorView
   }
 };
 
+// YOLO26-Pose exports as [channels, proposals] with 57 channels:
+// x1,y1,x2,y2,score,class,kpt0_x,kpt0_y,kpt0_score,...
+// Keep the legacy DeepStream-Yolo-Pose layout too, where keypoints start at 5.
 static size_t
 poseKeypointOffset(size_t channelsSize)
 {
