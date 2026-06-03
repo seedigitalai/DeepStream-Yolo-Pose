@@ -78,15 +78,41 @@ nmsAllClasses(std::vector<NvDsInferInstanceMaskInfo>& binfo)
   return result;
 }
 
-static void
-addPoseProposal(const float* output, size_t channelsSize, uint netW, uint netH, size_t n, NvDsInferInstanceMaskInfo& b)
+struct PoseTensorView
 {
-  size_t kptsSize = channelsSize - 5;
+  const float* output = nullptr;
+  size_t proposals = 0;
+  size_t channels = 0;
+  bool channelMajor = false;
+
+  float at(size_t proposal, size_t channel) const
+  {
+    return channelMajor ? output[channel * proposals + proposal] : output[proposal * channels + channel];
+  }
+};
+
+static size_t
+poseKeypointOffset(size_t channelsSize)
+{
+  if ((channelsSize - 5) % 3 == 0) {
+    return 5;
+  }
+  if ((channelsSize - 6) % 3 == 0) {
+    return 6;
+  }
+  return 0;
+}
+
+static void
+addPoseProposal(const PoseTensorView& tensor, size_t kptOffset, uint netW, uint netH, size_t n,
+    NvDsInferInstanceMaskInfo& b)
+{
+  size_t kptsSize = tensor.channels - kptOffset;
   b.mask = new float[kptsSize];
   for (size_t p = 0; p < kptsSize / 3; ++p) {
-    b.mask[p * 3 + 0] = clamp(output[n * channelsSize + p * 3 + 5], 0, netW);
-    b.mask[p * 3 + 1] = clamp(output[n * channelsSize + p * 3 + 6], 0, netH);
-    b.mask[p * 3 + 2] = output[n * channelsSize + p * 3 + 7];
+    b.mask[p * 3 + 0] = clamp(tensor.at(n, kptOffset + p * 3 + 0), 0, netW);
+    b.mask[p * 3 + 1] = clamp(tensor.at(n, kptOffset + p * 3 + 1), 0, netH);
+    b.mask[p * 3 + 2] = tensor.at(n, kptOffset + p * 3 + 2);
   }
   b.mask_width = netW;
   b.mask_height = netH;
@@ -116,27 +142,31 @@ addBBoxProposal(float x1, float y1, float x2, float y2, uint netW, uint netH, in
 }
 
 static std::vector<NvDsInferInstanceMaskInfo>
-decodeTensorYoloPose(const float* output, size_t outputSize, size_t channelsSize, uint netW, uint netH,
+decodeTensorYoloPose(const PoseTensorView& tensor, uint netW, uint netH,
     const std::vector<float>& preclusterThreshold)
 {
   std::vector<NvDsInferInstanceMaskInfo> objects;
+  const size_t kptOffset = poseKeypointOffset(tensor.channels);
+  if (tensor.proposals == 0 || tensor.channels < 8 || kptOffset == 0) {
+    return objects;
+  }
 
-  for (size_t n = 0; n < outputSize; ++n) {
-    float maxProb = output[n * channelsSize + 4];
+  for (size_t n = 0; n < tensor.proposals; ++n) {
+    float maxProb = tensor.at(n, 4);
 
     if (maxProb < preclusterThreshold[0]) {
       continue;
     }
 
-    float x1 = output[n * channelsSize + 0];
-    float y1 = output[n * channelsSize + 1];
-    float x2 = output[n * channelsSize + 2];
-    float y2 = output[n * channelsSize + 3];
+    float x1 = tensor.at(n, 0);
+    float y1 = tensor.at(n, 1);
+    float x2 = tensor.at(n, 2);
+    float y2 = tensor.at(n, 3);
 
     NvDsInferInstanceMaskInfo b;
 
     addBBoxProposal(x1, y1, x2, y2, netW, netH, 0, maxProb, b);
-    addPoseProposal(output, channelsSize, netW, netH, n, b);
+    addPoseProposal(tensor, kptOffset, netW, netH, n, b);
 
     objects.push_back(b);
   }
@@ -156,11 +186,20 @@ NvDsInferParseCustomYoloPose(std::vector<NvDsInferLayerInfo> const& outputLayers
 
   const NvDsInferLayerInfo& output = outputLayersInfo[0];
 
-  size_t outputSize = output.inferDims.d[0];
-  size_t channelsSize = output.inferDims.d[1];
+  PoseTensorView tensor;
+  tensor.output = (const float*) (output.buffer);
+  tensor.proposals = output.inferDims.d[0];
+  tensor.channels = output.inferDims.d[1];
 
-  std::vector<NvDsInferInstanceMaskInfo> objects = decodeTensorYoloPose((const float*) (output.buffer), outputSize,
-      channelsSize, networkInfo.width, networkInfo.height, detectionParams.perClassPreclusterThreshold);
+  if (output.inferDims.numDims >= 2 && output.inferDims.d[0] <= 128 &&
+      output.inferDims.d[1] > output.inferDims.d[0]) {
+    tensor.channels = output.inferDims.d[0];
+    tensor.proposals = output.inferDims.d[1];
+    tensor.channelMajor = true;
+  }
+
+  std::vector<NvDsInferInstanceMaskInfo> objects = decodeTensorYoloPose(tensor, networkInfo.width, networkInfo.height,
+      detectionParams.perClassPreclusterThreshold);
 
   objectList.clear();
   objectList = nmsAllClasses(objects);
