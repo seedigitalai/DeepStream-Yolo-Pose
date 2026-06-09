@@ -11,6 +11,20 @@ DS_SDK_ROOT:= /opt/nvidia/deepstream/deepstream
 
 LIB_INSTALL_DIR?= $(DS_SDK_ROOT)/lib/
 
+CUDA_INCLUDE_DIRS:= \
+	/usr/local/cuda-$(CUDA_VER)/include \
+	/usr/local/cuda-$(CUDA_VER)/targets/x86_64-linux/include \
+	$(wildcard $(HOME)/.local/lib/python*/site-packages/nvidia/cuda_runtime/include) \
+	$(wildcard $(HOME)/.local/lib/python*/site-packages/nvidia/cuda_nvcc/include)
+
+CUDA_LIB_DIRS:= \
+	/usr/local/cuda-$(CUDA_VER)/lib64 \
+	/usr/local/cuda-$(CUDA_VER)/targets/x86_64-linux/lib \
+	$(wildcard $(HOME)/.local/lib/python*/site-packages/nvidia/cuda_runtime/lib)
+
+CUDA_RUNTIME_LIB:=$(firstword $(wildcard $(addsuffix /libcudart.so,$(CUDA_LIB_DIRS))) \
+	$(wildcard $(addsuffix /libcudart.so.12,$(CUDA_LIB_DIRS))))
+
 TARGET_DEVICE= $(shell gcc -dumpmachine | cut -f1 -d -)
 ifeq ($(TARGET_DEVICE), aarch64)
 	CFLAGS+= -DPLATFORM_TEGRA
@@ -27,12 +41,12 @@ PKGS:= gstreamer-1.0
 OBJS:= $(addsuffix .o, $(basename $(SRCS)))
 
 CFLAGS+= -I$(DS_SDK_ROOT)/sources/apps/apps-common/includes -I$(DS_SDK_ROOT)/sources/includes \
- 	     -I/usr/local/cuda-$(CUDA_VER)/include
+	     $(addprefix -I,$(CUDA_INCLUDE_DIRS))
 
 CFLAGS+= `pkg-config --cflags $(PKGS)`
 LIBS:= `pkg-config --libs $(PKGS)`
 
-LIBS+= -L$(LIB_INSTALL_DIR) -lnvdsgst_meta -lnvds_meta -lnvdsgst_helper -L/usr/local/cuda-$(CUDA_VER)/lib64/ -lcudart \
+LIBS+= -L$(LIB_INSTALL_DIR) -lnvdsgst_meta -lnvds_meta -lnvdsgst_helper $(addprefix -L,$(CUDA_LIB_DIRS)) $(or $(CUDA_RUNTIME_LIB),-lcudart) \
        -lcuda -Wl,-rpath,$(LIB_INSTALL_DIR)
 
 all: $(APP)
