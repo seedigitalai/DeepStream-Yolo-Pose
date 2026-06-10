@@ -1,5 +1,6 @@
 #include "pose_inference_config.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -122,6 +123,15 @@ std::string roiParams(const std::vector<int>& xs, const std::vector<int>& ys,
     }
   }
   return out.str();
+}
+
+float overlap1D(float a_min, float a_max, float b_min, float b_max)
+{
+  if (a_min > b_min) {
+    std::swap(a_min, b_min);
+    std::swap(a_max, b_max);
+  }
+  return a_max < b_min ? 0.0f : std::min(a_max, b_max) - b_min;
 }
 
 } // namespace
@@ -266,4 +276,68 @@ nvds_yolo_pose_preprocess_tensor_batch_size(const NvDsYoloPosePreprocessConfig *
 
   *tensor_batch_size = static_cast<int>(xs.size() * ys.size()) * config->source_count;
   return 1;
+}
+
+extern "C" int
+nvds_yolo_pose_remap_keypoints_to_frame(float *mask, size_t mask_size,
+    unsigned *mask_width, unsigned *mask_height,
+    const NvDsYoloPoseRoiTransform *transform, char *error, size_t error_size)
+{
+  constexpr size_t kBytesPerKeypoint = sizeof(float) * 3;
+  if (!mask || mask_size == 0 || mask_size % kBytesPerKeypoint != 0 ||
+      !mask_width || !mask_height || !transform) {
+    writeError(error, error_size, "keypoint remap requires mask, dimensions, and ROI transform");
+    return 0;
+  }
+  if (transform->scale_ratio_x <= 0.0 || transform->scale_ratio_y <= 0.0 ||
+      transform->frame_width == 0 || transform->frame_height == 0) {
+    writeError(error, error_size, "keypoint remap transform has invalid scale or frame size");
+    return 0;
+  }
+
+  const size_t keypoints = mask_size / kBytesPerKeypoint;
+  for (size_t i = 0; i < keypoints; ++i) {
+    float& x = mask[i * 3 + 0];
+    float& y = mask[i * 3 + 1];
+    x = static_cast<float>(
+        (static_cast<double>(x) - transform->offset_left) / transform->scale_ratio_x +
+        transform->roi_left);
+    y = static_cast<float>(
+        (static_cast<double>(y) - transform->offset_top) / transform->scale_ratio_y +
+        transform->roi_top);
+  }
+
+  *mask_width = transform->frame_width;
+  *mask_height = transform->frame_height;
+  return 1;
+}
+
+extern "C" float
+nvds_yolo_pose_box_iou(const NvDsYoloPoseObjectBox *a,
+    const NvDsYoloPoseObjectBox *b)
+{
+  if (!a || !b || a->width <= 0.0f || a->height <= 0.0f ||
+      b->width <= 0.0f || b->height <= 0.0f) {
+    return 0.0f;
+  }
+  const float overlap_x = overlap1D(a->left, a->left + a->width,
+      b->left, b->left + b->width);
+  const float overlap_y = overlap1D(a->top, a->top + a->height,
+      b->top, b->top + b->height);
+  const float intersection = overlap_x * overlap_y;
+  const float area_a = a->width * a->height;
+  const float area_b = b->width * b->height;
+  const float denominator = area_a + area_b - intersection;
+  return denominator <= 0.0f ? 0.0f : intersection / denominator;
+}
+
+extern "C" int
+nvds_yolo_pose_should_suppress_duplicate(const NvDsYoloPoseObjectBox *candidate,
+    const NvDsYoloPoseObjectBox *kept, float merge_iou_threshold)
+{
+  if (!candidate || !kept || candidate->class_id != kept->class_id ||
+      merge_iou_threshold < 0.0f || merge_iou_threshold > 1.0f) {
+    return 0;
+  }
+  return nvds_yolo_pose_box_iou(candidate, kept) > merge_iou_threshold ? 1 : 0;
 }

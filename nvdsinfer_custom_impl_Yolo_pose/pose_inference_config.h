@@ -34,6 +34,28 @@ typedef struct {
   NvDsYoloPoseInferenceConfig inference;
 } NvDsYoloPosePreprocessConfig;
 
+typedef struct {
+  double roi_left;
+  double roi_top;
+  double roi_width;
+  double roi_height;
+  double scale_ratio_x;
+  double scale_ratio_y;
+  double offset_left;
+  double offset_top;
+  unsigned frame_width;
+  unsigned frame_height;
+} NvDsYoloPoseRoiTransform;
+
+typedef struct {
+  float left;
+  float top;
+  float width;
+  float height;
+  float confidence;
+  int class_id;
+} NvDsYoloPoseObjectBox;
+
 void nvds_yolo_pose_reset_inference_config(void);
 void nvds_yolo_pose_get_inference_config(NvDsYoloPoseInferenceConfig *config);
 int nvds_yolo_pose_set_inference_config(const NvDsYoloPoseInferenceConfig *config,
@@ -42,6 +64,13 @@ int nvds_yolo_pose_write_preprocess_config(const NvDsYoloPosePreprocessConfig *c
     char *error, size_t error_size);
 int nvds_yolo_pose_preprocess_tensor_batch_size(const NvDsYoloPosePreprocessConfig *config,
     int *tensor_batch_size, char *error, size_t error_size);
+int nvds_yolo_pose_remap_keypoints_to_frame(float *mask, size_t mask_size,
+    unsigned *mask_width, unsigned *mask_height,
+    const NvDsYoloPoseRoiTransform *transform, char *error, size_t error_size);
+float nvds_yolo_pose_box_iou(const NvDsYoloPoseObjectBox *a,
+    const NvDsYoloPoseObjectBox *b);
+int nvds_yolo_pose_should_suppress_duplicate(const NvDsYoloPoseObjectBox *candidate,
+    const NvDsYoloPoseObjectBox *kept, float merge_iou_threshold);
 
 #ifdef __cplusplus
 }
