@@ -13,14 +13,19 @@ LIB_INSTALL_DIR?= $(DS_SDK_ROOT)/lib/
 
 CUDA_INCLUDE_DIRS:= \
 	/usr/local/cuda-$(CUDA_VER)/include \
-	/usr/local/cuda-$(CUDA_VER)/targets/x86_64-linux/include \
-	$(wildcard $(HOME)/.local/lib/python*/site-packages/nvidia/cuda_runtime/include) \
-	$(wildcard $(HOME)/.local/lib/python*/site-packages/nvidia/cuda_nvcc/include)
+	/usr/local/cuda-$(CUDA_VER)/targets/x86_64-linux/include
+
+ifneq ($(strip $(EXTRA_CUDA_INCLUDE)),)
+CUDA_INCLUDE_DIRS+= $(EXTRA_CUDA_INCLUDE)
+endif
 
 CUDA_LIB_DIRS:= \
 	/usr/local/cuda-$(CUDA_VER)/lib64 \
-	/usr/local/cuda-$(CUDA_VER)/targets/x86_64-linux/lib \
-	$(wildcard $(HOME)/.local/lib/python*/site-packages/nvidia/cuda_runtime/lib)
+	/usr/local/cuda-$(CUDA_VER)/targets/x86_64-linux/lib
+
+ifneq ($(strip $(EXTRA_CUDA_LIB_DIRS)),)
+CUDA_LIB_DIRS+= $(EXTRA_CUDA_LIB_DIRS)
+endif
 
 CUDA_RUNTIME_LIB:=$(firstword $(wildcard $(addsuffix /libcudart.so,$(CUDA_LIB_DIRS))) \
 	$(wildcard $(addsuffix /libcudart.so.12,$(CUDA_LIB_DIRS))))
