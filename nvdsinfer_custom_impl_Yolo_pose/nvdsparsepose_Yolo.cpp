@@ -143,6 +143,8 @@ addBBoxProposal(float x1, float y1, float x2, float y2, uint netW, uint netH, in
   }
 
   b.detectionConfidence = maxProb;
+  // nvinfer maps this numeric classId to NvDsObjectMeta::obj_label via
+  // labelfile-path; the pose keypoint payload itself does not carry labels.
   b.classId = maxIndex;
 }
 

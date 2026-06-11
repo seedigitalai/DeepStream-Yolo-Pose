@@ -114,6 +114,11 @@ Reference: https://github.com/NVIDIA-AI-IOT/deepstream_python_apps
 
 **NOTE**: The TensorRT engine file may take a very long time to generate (sometimes more than 10 minutes).
 
+**NOTE**: The pose parser writes numeric `classId` values and keypoints. DeepStream
+`nvinfer` maps `classId` to `NvDsObjectMeta::obj_label` from `labelfile-path`
+in the infer config. Keep `labels.txt` in the same class order as the model
+export (`model.names` for Ultralytics exports).
+
 **NOTE**: To change the source
 
 ```
