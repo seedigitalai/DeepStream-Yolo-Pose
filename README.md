@@ -119,6 +119,12 @@ Reference: https://github.com/NVIDIA-AI-IOT/deepstream_python_apps
 in the infer config. Keep `labels.txt` in the same class order as the model
 export (`model.names` for Ultralytics exports).
 
+**NOTE**: `NvDsInferParseYoloPose` expects bbox channels in corner form
+`x1,y1,x2,y2`. For exports that emit center-size `xc,yc,w,h`, use
+`parse-bbox-instance-mask-func-name=NvDsInferParseYoloPoseXYWH`. For
+channel-major outputs such as `[57, proposals]`, use
+`NvDsInferParseYoloPoseChannelMajor` or `NvDsInferParseYoloPoseXYWHChannelMajor`.
+
 **NOTE**: To change the source
 
 ```

@@ -10,6 +10,33 @@ extern "C" bool
 NvDsInferParseYoloPose(std::vector<NvDsInferLayerInfo> const& outputLayersInfo, NvDsInferNetworkInfo const& networkInfo,
     NvDsInferParseDetectionParams const& detectionParams, std::vector<NvDsInferInstanceMaskInfo>& objectList);
 
+extern "C" bool
+NvDsInferParseYoloPoseXYWH(std::vector<NvDsInferLayerInfo> const& outputLayersInfo,
+    NvDsInferNetworkInfo const& networkInfo, NvDsInferParseDetectionParams const& detectionParams,
+    std::vector<NvDsInferInstanceMaskInfo>& objectList);
+
+extern "C" bool
+NvDsInferParseYoloPoseChannelMajor(std::vector<NvDsInferLayerInfo> const& outputLayersInfo,
+    NvDsInferNetworkInfo const& networkInfo, NvDsInferParseDetectionParams const& detectionParams,
+    std::vector<NvDsInferInstanceMaskInfo>& objectList);
+
+extern "C" bool
+NvDsInferParseYoloPoseXYWHChannelMajor(std::vector<NvDsInferLayerInfo> const& outputLayersInfo,
+    NvDsInferNetworkInfo const& networkInfo, NvDsInferParseDetectionParams const& detectionParams,
+    std::vector<NvDsInferInstanceMaskInfo>& objectList);
+
+enum class BboxFormat
+{
+  Xyxy,
+  Xywh
+};
+
+enum class TensorLayout
+{
+  ProposalMajor,
+  ChannelMajor
+};
+
 static float
 clamp(float val, float minVal, float maxVal)
 {
@@ -150,7 +177,7 @@ addBBoxProposal(float x1, float y1, float x2, float y2, uint netW, uint netH, in
 
 static std::vector<NvDsInferInstanceMaskInfo>
 decodeTensorYoloPose(const PoseTensorView& tensor, uint netW, uint netH,
-    const std::vector<float>& preclusterThreshold)
+    const std::vector<float>& preclusterThreshold, BboxFormat bboxFormat)
 {
   std::vector<NvDsInferInstanceMaskInfo> objects;
   const size_t kptOffset = poseKeypointOffset(tensor.channels);
@@ -169,8 +196,18 @@ decodeTensorYoloPose(const PoseTensorView& tensor, uint netW, uint netH,
     float y1 = tensor.at(n, 1);
     float x2 = tensor.at(n, 2);
     float y2 = tensor.at(n, 3);
+    if (bboxFormat == BboxFormat::Xywh) {
+      const float xc = x1;
+      const float yc = y1;
+      const float w = x2;
+      const float h = y2;
+      x1 = xc - w * 0.5f;
+      y1 = yc - h * 0.5f;
+      x2 = xc + w * 0.5f;
+      y2 = yc + h * 0.5f;
+    }
 
-    NvDsInferInstanceMaskInfo b;
+    NvDsInferInstanceMaskInfo b = {};
 
     addBBoxProposal(x1, y1, x2, y2, netW, netH, 0, maxProb, b);
     addPoseProposal(tensor, kptOffset, netW, netH, n, b);
@@ -184,7 +221,7 @@ decodeTensorYoloPose(const PoseTensorView& tensor, uint netW, uint netH,
 static bool
 NvDsInferParseCustomYoloPose(std::vector<NvDsInferLayerInfo> const& outputLayersInfo,
     NvDsInferNetworkInfo const& networkInfo, NvDsInferParseDetectionParams const& detectionParams,
-    std::vector<NvDsInferInstanceMaskInfo>& objectList)
+    std::vector<NvDsInferInstanceMaskInfo>& objectList, BboxFormat bboxFormat, TensorLayout tensorLayout)
 {
   if (outputLayersInfo.empty()) {
     std::cerr << "ERROR - Could not find output layer" << std::endl;
@@ -195,18 +232,24 @@ NvDsInferParseCustomYoloPose(std::vector<NvDsInferLayerInfo> const& outputLayers
 
   PoseTensorView tensor;
   tensor.output = (const float*) (output.buffer);
-  tensor.proposals = output.inferDims.d[0];
-  tensor.channels = output.inferDims.d[1];
+  size_t firstDim = output.inferDims.d[0];
+  size_t secondDim = output.inferDims.d[1];
+  if (output.inferDims.numDims >= 3) {
+    firstDim = output.inferDims.d[1];
+    secondDim = output.inferDims.d[2];
+  }
 
-  if (output.inferDims.numDims >= 2 && output.inferDims.d[0] <= 128 &&
-      output.inferDims.d[1] > output.inferDims.d[0]) {
-    tensor.channels = output.inferDims.d[0];
-    tensor.proposals = output.inferDims.d[1];
+  tensor.proposals = firstDim;
+  tensor.channels = secondDim;
+
+  if (tensorLayout == TensorLayout::ChannelMajor) {
+    tensor.channels = firstDim;
+    tensor.proposals = secondDim;
     tensor.channelMajor = true;
   }
 
   std::vector<NvDsInferInstanceMaskInfo> objects = decodeTensorYoloPose(tensor, networkInfo.width, networkInfo.height,
-      detectionParams.perClassPreclusterThreshold);
+      detectionParams.perClassPreclusterThreshold, bboxFormat);
 
   objectList.clear();
   objectList = nmsAllClasses(objects);
@@ -218,7 +261,38 @@ extern "C" bool
 NvDsInferParseYoloPose(std::vector<NvDsInferLayerInfo> const& outputLayersInfo, NvDsInferNetworkInfo const& networkInfo,
     NvDsInferParseDetectionParams const& detectionParams, std::vector<NvDsInferInstanceMaskInfo>& objectList)
 {
-  return NvDsInferParseCustomYoloPose(outputLayersInfo, networkInfo, detectionParams, objectList);
+  return NvDsInferParseCustomYoloPose(outputLayersInfo, networkInfo, detectionParams, objectList, BboxFormat::Xyxy,
+      TensorLayout::ProposalMajor);
+}
+
+extern "C" bool
+NvDsInferParseYoloPoseXYWH(std::vector<NvDsInferLayerInfo> const& outputLayersInfo,
+    NvDsInferNetworkInfo const& networkInfo, NvDsInferParseDetectionParams const& detectionParams,
+    std::vector<NvDsInferInstanceMaskInfo>& objectList)
+{
+  return NvDsInferParseCustomYoloPose(outputLayersInfo, networkInfo, detectionParams, objectList, BboxFormat::Xywh,
+      TensorLayout::ProposalMajor);
+}
+
+extern "C" bool
+NvDsInferParseYoloPoseChannelMajor(std::vector<NvDsInferLayerInfo> const& outputLayersInfo,
+    NvDsInferNetworkInfo const& networkInfo, NvDsInferParseDetectionParams const& detectionParams,
+    std::vector<NvDsInferInstanceMaskInfo>& objectList)
+{
+  return NvDsInferParseCustomYoloPose(outputLayersInfo, networkInfo, detectionParams, objectList, BboxFormat::Xyxy,
+      TensorLayout::ChannelMajor);
+}
+
+extern "C" bool
+NvDsInferParseYoloPoseXYWHChannelMajor(std::vector<NvDsInferLayerInfo> const& outputLayersInfo,
+    NvDsInferNetworkInfo const& networkInfo, NvDsInferParseDetectionParams const& detectionParams,
+    std::vector<NvDsInferInstanceMaskInfo>& objectList)
+{
+  return NvDsInferParseCustomYoloPose(outputLayersInfo, networkInfo, detectionParams, objectList, BboxFormat::Xywh,
+      TensorLayout::ChannelMajor);
 }
 
 CHECK_CUSTOM_INSTANCE_MASK_PARSE_FUNC_PROTOTYPE(NvDsInferParseYoloPose);
+CHECK_CUSTOM_INSTANCE_MASK_PARSE_FUNC_PROTOTYPE(NvDsInferParseYoloPoseXYWH);
+CHECK_CUSTOM_INSTANCE_MASK_PARSE_FUNC_PROTOTYPE(NvDsInferParseYoloPoseChannelMajor);
+CHECK_CUSTOM_INSTANCE_MASK_PARSE_FUNC_PROTOTYPE(NvDsInferParseYoloPoseXYWHChannelMajor);
