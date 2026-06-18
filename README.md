@@ -74,6 +74,7 @@ export CUDA_VER=XY.Z
 
 ```
 make -C nvdsinfer_custom_impl_Yolo_pose clean && make -C nvdsinfer_custom_impl_Yolo_pose
+make clean && make
 ```
 
 **NOTE**: To use the Python code, you need to install the DeepStream Python bindings.
@@ -98,6 +99,12 @@ Reference: https://github.com/NVIDIA-AI-IOT/deepstream_python_apps
 **NOTE**: The steps above only work on **DeepStream 8.0**. For previous versions, please check the files on the `NVIDIA-AI-IOT/deepstream_python_apps` repo.
 
 #### 3. Run
+
+* C code
+
+  ```
+  ./deepstream -s file:///opt/nvidia/deepstream/deepstream/samples/streams/sample_1080p_h264.mp4 -c config_infer_primary_yoloV8_pose.txt
+  ```
 
 * Python code
 
