@@ -1,32 +1,38 @@
+################################################################################
+# Copyright (c) 2018-2024, NVIDIA CORPORATION. All rights reserved.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+#
+# Edited by Marcos Luciano
+# https://www.github.com/marcoslucianops
+################################################################################
+
 CUDA_VER?=
 ifeq ($(CUDA_VER),)
-	$(error "CUDA_VER is not set")
+$(error "CUDA_VER isn't set")
 endif
 
-CXX:= g++
-
-CUDA_INCLUDE_DIRS:= \
-	/usr/local/cuda-$(CUDA_VER)/include \
-	/usr/local/cuda-$(CUDA_VER)/targets/x86_64-linux/include
-
-ifneq ($(strip $(EXTRA_CUDA_INCLUDE)),)
-CUDA_INCLUDE_DIRS+= $(EXTRA_CUDA_INCLUDE)
-endif
-
-CUDA_LIB_DIRS:= \
-	/usr/local/cuda-$(CUDA_VER)/lib64 \
-	/usr/local/cuda-$(CUDA_VER)/targets/x86_64-linux/lib
-
-ifneq ($(strip $(EXTRA_CUDA_LIB_DIRS)),)
-CUDA_LIB_DIRS+= $(EXTRA_CUDA_LIB_DIRS)
-endif
-
-CUDA_RUNTIME_LIB?=$(firstword $(wildcard $(addsuffix /libcudart.so,$(CUDA_LIB_DIRS))) \
-	$(wildcard $(addsuffix /libcudart.so.12,$(CUDA_LIB_DIRS))))
+CC:= g++
 
 TARGET_LIB:= libnvdsinfer_custom_impl_Yolo_pose.so
 
-CFLAGS:= -Wall -std=c++17 -shared -fPIC -Wno-error=deprecated-declarations
+CFLAGS:= -Wall -std=c++11 -shared -fPIC -Wno-error=deprecated-declarations
 
 # Allow building with DEBUG=1 to enable debug symbols and disable optimizations
 ifeq ($(DEBUG),1)
@@ -35,23 +41,26 @@ else
 	CFLAGS += -O2
 endif
 
-CFLAGS+= -I/opt/nvidia/deepstream/deepstream/sources/includes $(addprefix -I,$(CUDA_INCLUDE_DIRS))
+CFLAGS+= -I/opt/nvidia/deepstream/deepstream/sources/includes -I/usr/local/cuda-$(CUDA_VER)/include
 
-LIBS+= -lnvinfer $(addprefix -L,$(CUDA_LIB_DIRS)) $(or $(CUDA_RUNTIME_LIB),-lcudart) -lstdc++fs
+LIBS+= -lnvinfer -L/usr/local/cuda-$(CUDA_VER)/lib64 -lcudart -lstdc++fs
 
 LFLAGS:= -shared -Wl,--start-group $(LIBS) -Wl,--end-group
 
-SRCS:= $(wildcard *.cpp)
+INCS:= $(wildcard *.h)
 
-OBJS:= $(addsuffix .o, $(basename $(SRCS)))
+SRCFILES:= $(wildcard *.cpp)
+
+TARGET_OBJS:= $(SRCFILES:.cpp=.o)
 
 all: $(TARGET_LIB)
 
-%.o: %.cpp Makefile
-	$(CXX) -c -o $@ $(CFLAGS) $<
+%.o: %.cpp $(INCS) Makefile
+	$(CC) -c -o $@ $(CFLAGS) $<
 
-$(TARGET_LIB) : $(OBJS)
-	$(CXX) -o $@ $(OBJS) $(LFLAGS)
+$(TARGET_LIB) : $(TARGET_OBJS)
+	$(CC) -o $@ $(TARGET_OBJS) $(LFLAGS)
 
 clean:
-	rm -rf $(OBJS) $(TARGET_LIB)
+	rm -rf $(TARGET_LIB)
+	rm -rf $(TARGET_OBJS)

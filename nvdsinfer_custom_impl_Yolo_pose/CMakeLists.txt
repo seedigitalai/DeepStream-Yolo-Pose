@@ -5,7 +5,7 @@ set(YOLO_POSE_IMPL_LIB ${CMAKE_CURRENT_SOURCE_DIR}/libnvdsinfer_custom_impl_Yolo
 # Build target
 add_custom_target(nvdsinfer_custom_impl_yolo_pose ALL
     COMMAND $(MAKE) -j${CMAKE_BUILD_PARALLEL_LEVEL}
-        CUDA_VER=${CUDA_VER}
+        CUDA_VER="${CUDA_VER}"
     # Copy output to the main build dir for when we're running without installing
     COMMAND ${CMAKE_COMMAND} -E copy ${YOLO_POSE_IMPL_LIB} ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
