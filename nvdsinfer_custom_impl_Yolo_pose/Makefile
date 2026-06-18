@@ -1,45 +1,13 @@
-################################################################################
-# Copyright (c) 2018-2024, NVIDIA CORPORATION. All rights reserved.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a
-# copy of this software and associated documentation files (the "Software"),
-# to deal in the Software without restriction, including without limitation
-# the rights to use, copy, modify, merge, publish, distribute, sublicense,
-# and/or sell copies of the Software, and to permit persons to whom the
-# Software is furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.
-#
-# Edited by Marcos Luciano
-# https://www.github.com/marcoslucianops
-################################################################################
-
 CUDA_VER?=
 ifeq ($(CUDA_VER),)
-$(error "CUDA_VER isn't set")
+	$(error "CUDA_VER is not set")
 endif
 
-CC:= g++
+CXX:= g++
 
 TARGET_LIB:= libnvdsinfer_custom_impl_Yolo_pose.so
 
-CFLAGS:= -Wall -std=c++11 -shared -fPIC -Wno-error=deprecated-declarations
-
-# Allow building with DEBUG=1 to enable debug symbols and disable optimizations
-ifeq ($(DEBUG),1)
-	CFLAGS += -g -O0
-else
-	CFLAGS += -O2
-endif
+CFLAGS:= -Wall -std=c++17 -shared -fPIC -Wno-error=deprecated-declarations
 
 CFLAGS+= -I/opt/nvidia/deepstream/deepstream/sources/includes -I/usr/local/cuda-$(CUDA_VER)/include
 
@@ -47,20 +15,17 @@ LIBS+= -lnvinfer -L/usr/local/cuda-$(CUDA_VER)/lib64 -lcudart -lstdc++fs
 
 LFLAGS:= -shared -Wl,--start-group $(LIBS) -Wl,--end-group
 
-INCS:= $(wildcard *.h)
+SRCS:= $(wildcard *.cpp)
 
-SRCFILES:= $(wildcard *.cpp)
-
-TARGET_OBJS:= $(SRCFILES:.cpp=.o)
+OBJS:= $(addsuffix .o, $(basename $(SRCS)))
 
 all: $(TARGET_LIB)
 
-%.o: %.cpp $(INCS) Makefile
-	$(CC) -c -o $@ $(CFLAGS) $<
+%.o: %.cpp Makefile
+	$(CXX) -c -o $@ $(CFLAGS) $<
 
-$(TARGET_LIB) : $(TARGET_OBJS)
-	$(CC) -o $@ $(TARGET_OBJS) $(LFLAGS)
+$(TARGET_LIB) : $(OBJS)
+	$(CXX) -o $@ $(OBJS) $(LFLAGS)
 
 clean:
-	rm -rf $(TARGET_LIB)
-	rm -rf $(TARGET_OBJS)
+	rm -rf $(OBJS) $(TARGET_LIB)
