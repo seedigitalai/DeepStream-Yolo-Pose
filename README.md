@@ -1,5 +1,17 @@
 # DeepStream-Yolo-Pose
 
+## Seedigital fork notes
+
+This fork keeps the upstream DeepStream-Yolo-Pose implementation and adds support
+for YOLO26 pose parser output. The parser now accepts both the upstream
+`[proposals, channels]` layout used by existing YOLO-Pose exports and the
+`[channels, proposals]` layout used by the YOLO26 pose export in our pipeline.
+
+Backward compatibility has been smoke-tested through `pipeline-core` with the
+10-second pose smoke video for YOLOv8n-Pose and YOLO11n-Pose. Both produced
+Frame events with pose objects and rendered MP4 overlays. YOLOv7-Pose and
+YOLO-NAS-Pose were not retested as part of this fork update.
+
 NVIDIA DeepStream SDK 8.0 / 7.1 / 7.0 / 6.4 / 6.3 / 6.2 / 6.1.1 / 6.1 / 6.0.1 / 6.0 application for YOLO-Pose models
 
 --------------------------------------------------------------------------------------------------
