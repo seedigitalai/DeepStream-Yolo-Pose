@@ -1,10 +1,10 @@
+#include "nvdsinfer_custom_impl.h"
+
 #include <cassert>
 #include <algorithm>
 #include <iostream>
 
-#include "nvdsinfer_custom_impl.h"
-
-#define NMS_THRESH 0.45;
+#define NMS_THRESH 0.45
 
 extern "C" bool
 NvDsInferParseYoloPose(std::vector<NvDsInferLayerInfo> const& outputLayersInfo, NvDsInferNetworkInfo const& networkInfo,
@@ -139,10 +139,12 @@ addBBoxProposal(float x1, float y1, float x2, float y2, uint netW, uint netH, in
   b.height = clamp(y2 - y1, 0, netH);
 
   if (b.width < 1 || b.height < 1) {
-      return;
+    return;
   }
 
   b.detectionConfidence = maxProb;
+  // nvinfer maps this numeric classId to NvDsObjectMeta::obj_label via
+  // labelfile-path; the pose keypoint payload itself does not carry labels.
   b.classId = maxIndex;
 }
 
