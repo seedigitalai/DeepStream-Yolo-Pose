@@ -117,6 +117,62 @@ static void assert_write_preprocess_config()
   std::remove(path);
 }
 
+static void assert_remap_keypoints_to_frame()
+{
+  float mask[] = {
+    320.0f, 160.0f, 0.9f,
+    480.0f, 640.0f, 0.8f,
+  };
+  unsigned mask_width = 640;
+  unsigned mask_height = 640;
+
+  NvDsYoloPoseRoiTransform transform{};
+  transform.roi_left = 480.0;
+  transform.roi_top = 80.0;
+  transform.roi_width = 640.0;
+  transform.roi_height = 640.0;
+  transform.scale_ratio_x = 1.0;
+  transform.scale_ratio_y = 1.0;
+  transform.offset_left = 0.0;
+  transform.offset_top = 0.0;
+  transform.frame_width = 1280;
+  transform.frame_height = 720;
+
+  char error[128] = {};
+  assert(nvds_yolo_pose_remap_keypoints_to_frame(
+      mask, sizeof(mask), &mask_width, &mask_height, &transform,
+      error, sizeof(error)) == 1);
+  assert(std::fabs(mask[0] - 800.0f) < 1e-6f);
+  assert(std::fabs(mask[1] - 240.0f) < 1e-6f);
+  assert(std::fabs(mask[3] - 960.0f) < 1e-6f);
+  assert(std::fabs(mask[4] - 720.0f) < 1e-6f);
+  assert(mask_width == 1280);
+  assert(mask_height == 720);
+}
+
+static void assert_duplicate_suppression()
+{
+  NvDsYoloPoseObjectBox kept{};
+  kept.left = 100.0f;
+  kept.top = 100.0f;
+  kept.width = 100.0f;
+  kept.height = 100.0f;
+  kept.confidence = 0.9f;
+  kept.class_id = 0;
+
+  NvDsYoloPoseObjectBox duplicate = kept;
+  duplicate.left = 110.0f;
+  duplicate.top = 110.0f;
+  duplicate.confidence = 0.8f;
+
+  NvDsYoloPoseObjectBox separate = kept;
+  separate.left = 260.0f;
+
+  assert(nvds_yolo_pose_box_iou(&duplicate, &kept) > 0.45f);
+  assert(nvds_yolo_pose_should_suppress_duplicate(&duplicate, &kept, 0.45f) == 1);
+  assert(nvds_yolo_pose_should_suppress_duplicate(&separate, &kept, 0.45f) == 0);
+}
+
 int main()
 {
   nvds_yolo_pose_reset_inference_config();
@@ -125,6 +181,8 @@ int main()
   assert_set_sliding_window_config();
   assert_reject_invalid_config();
   assert_write_preprocess_config();
+  assert_remap_keypoints_to_frame();
+  assert_duplicate_suppression();
   std::cout << "pose inference config defaults passed\n";
   return 0;
 }
