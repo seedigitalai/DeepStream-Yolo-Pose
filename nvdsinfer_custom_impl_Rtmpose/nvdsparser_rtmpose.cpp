@@ -156,7 +156,7 @@ static bool NvDsInferParseCustomRtmpose(
 
         decodeSimcc(
             simccXBuf + b * K * Xbins, K, Xbins,
-            simccYBuf + b * K * Ybins, K, Ybins,
+            simccYBuf + b * K * Ybins, Ybins,
             netW, netH,
             obj.mask);
 
