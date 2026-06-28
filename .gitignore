@@ -4,6 +4,8 @@ deepstream
 modules/*.o
 nvdsinfer_custom_impl_Yolo_pose/*.o
 nvdsinfer_custom_impl_Yolo_pose/*.so
+nvdsinfer_custom_impl_Rtmpose/*.o
+nvdsinfer_custom_impl_Rtmpose/*.so
 
 # Editor settings
 .vscode/
