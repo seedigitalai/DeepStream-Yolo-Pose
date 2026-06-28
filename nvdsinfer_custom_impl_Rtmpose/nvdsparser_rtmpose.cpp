@@ -107,13 +107,13 @@ static bool NvDsInferParseCustomRtmpose(
     // Locate simcc_x and simcc_y by name
     const float* simccXBuf = nullptr;
     const float* simccYBuf = nullptr;
-    int K = 0, Xbins = 0, Ybins = 0;
+    int Kx = 0, Ky = 0, Xbins = 0, Ybins = 0;
     int batchSize = 1;
 
     for (auto const& layer : outputLayersInfo) {
         if (!layer.buffer || layer.inferDims.numDims < 3) continue;
 
-        // Batch dimension may be -1 (dynamic); clamp to 1
+        // Batch dimension may be -1 (dynamic); assume batch=1 for dynamic shapes
         int B = static_cast<int>(layer.inferDims.d[0]);
         if (B <= 0) B = 1;
         batchSize = std::max(batchSize, B);
@@ -121,24 +121,29 @@ static bool NvDsInferParseCustomRtmpose(
         int k = static_cast<int>(layer.inferDims.d[1]);
         int bins = static_cast<int>(layer.inferDims.d[2]);
 
-        if (std::strstr(layer.layerName, "simcc_x") ||
-            std::strstr(layer.layerName, "x")) {
+        if (std::strstr(layer.layerName, "simcc_x")) {
             simccXBuf = static_cast<const float*>(layer.buffer);
-            K = k;
+            Kx = k;
             Xbins = bins;
-        } else if (std::strstr(layer.layerName, "simcc_y") ||
-                   std::strstr(layer.layerName, "y")) {
+        } else if (std::strstr(layer.layerName, "simcc_y")) {
             simccYBuf = static_cast<const float*>(layer.buffer);
-            K = k;
+            Ky = k;
             Ybins = bins;
         }
     }
 
-    if (!simccXBuf || !simccYBuf || K == 0 || Xbins == 0 || Ybins == 0) {
+    if (!simccXBuf || !simccYBuf || Kx == 0 || Ky == 0 || Xbins == 0 || Ybins == 0) {
         std::cerr << "[Rtmpose] ERROR: could not locate simcc_x / simcc_y tensors"
                   << std::endl;
         return false;
     }
+
+    if (Kx != Ky) {
+        std::cerr << "[Rtmpose] ERROR: keypoint count mismatch – simcc_x="
+                  << Kx << " simcc_y=" << Ky << std::endl;
+        return false;
+    }
+    int K = Kx;
 
     const float netW = static_cast<float>(networkInfo.width);
     const float netH = static_cast<float>(networkInfo.height);
