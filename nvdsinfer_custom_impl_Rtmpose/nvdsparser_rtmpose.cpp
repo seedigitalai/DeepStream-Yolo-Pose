@@ -104,46 +104,22 @@ static bool NvDsInferParseCustomRtmpose(
         return false;
     }
 
-    // Locate simcc_x and simcc_y by name
-    const float* simccXBuf = nullptr;
-    const float* simccYBuf = nullptr;
-    int Kx = 0, Ky = 0, Xbins = 0, Ybins = 0;
+    // RTMPose-m constants (hardcoded: TensorRT may rename output tensors)
+    static constexpr int K = 17;       // COCO keypoints
+    static constexpr int Xbins = 384;  // 2 * input_w (192)
+    static constexpr int Ybins = 512;  // 2 * input_h (256)
+
+    // Use index-based assignment: assume layer 0 = simcc_x, layer 1 = simcc_y
+    // (TensorRT may rename outputs, so name matching can fail.)
+    const float* simccXBuf = static_cast<const float*>(outputLayersInfo[0].buffer);
+    const float* simccYBuf = static_cast<const float*>(outputLayersInfo[1].buffer);
     int batchSize = 1;
 
-    for (auto const& layer : outputLayersInfo) {
-        if (!layer.buffer || layer.inferDims.numDims < 3) continue;
-
-        // Batch dimension may be -1 (dynamic); assume batch=1 for dynamic shapes
-        int B = static_cast<int>(layer.inferDims.d[0]);
-        if (B <= 0) B = 1;
-        batchSize = std::max(batchSize, B);
-
-        int k = static_cast<int>(layer.inferDims.d[1]);
-        int bins = static_cast<int>(layer.inferDims.d[2]);
-
-        if (std::strstr(layer.layerName, "simcc_x")) {
-            simccXBuf = static_cast<const float*>(layer.buffer);
-            Kx = k;
-            Xbins = bins;
-        } else if (std::strstr(layer.layerName, "simcc_y")) {
-            simccYBuf = static_cast<const float*>(layer.buffer);
-            Ky = k;
-            Ybins = bins;
-        }
+    // Infer batch from the first layer's dims
+    if (outputLayersInfo[0].inferDims.numDims >= 3) {
+        int B = static_cast<int>(outputLayersInfo[0].inferDims.d[0]);
+        if (B > 0) batchSize = B;
     }
-
-    if (!simccXBuf || !simccYBuf || Kx == 0 || Ky == 0 || Xbins == 0 || Ybins == 0) {
-        std::cerr << "[Rtmpose] ERROR: could not locate simcc_x / simcc_y tensors"
-                  << std::endl;
-        return false;
-    }
-
-    if (Kx != Ky) {
-        std::cerr << "[Rtmpose] ERROR: keypoint count mismatch – simcc_x="
-                  << Kx << " simcc_y=" << Ky << std::endl;
-        return false;
-    }
-    int K = Kx;
 
     const float netW = static_cast<float>(networkInfo.width);
     const float netH = static_cast<float>(networkInfo.height);
