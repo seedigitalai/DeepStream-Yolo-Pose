@@ -6,19 +6,19 @@
 #include <iostream>
 
 /* ------------------------------------------------------------------ */
-/* RTMPose-m SimCC parser for DeepStream nvinfer.                      */
+/* RTMPose SimCC parser for DeepStream nvinfer.                        */
 /*                                                                     */
 /* Decodes SimCC output tensors (simcc_x, simcc_y) into keypoint       */
 /* triplets stored in NvDsInferInstanceMaskInfo::mask.                 */
 /*                                                                     */
 /* Model contract:                                                     */
-/*   Input:  [1, 3, 256, 192]  (NCHW, portrait)                       */
-/*   Output: simcc_x  [1, 17, 384]   (2× horizontal binning)          */
-/*           simcc_y  [1, 17, 512]   (2× vertical binning)            */
+/*   Input:  [B, 3, H, W]  (NCHW, portrait)                           */
+/*   Output: simcc_x  [B, K, Xbins]                                   */
+/*           simcc_y  [B, K, Ybins]                                   */
 /*                                                                     */
 /* The parser emits one NvDsInferInstanceMaskInfo per batch element    */
-/* with 17 keypoints × (x, y, confidence).  Coordinates are in         */
-/* network input space (0..192, 0..256).                               */
+/* with K keypoints × (x, y, confidence). Coordinates are in network   */
+/* input space.                                                        */
 /* ------------------------------------------------------------------ */
 
 extern "C" bool NvDsInferParseRtmpose(
@@ -77,9 +77,9 @@ static void decodeSimcc(
         float rx = refineBin(rowX, mx, Xbins);
         float ry = refineBin(rowY, my, Ybins);
 
-        // SimCC uses 2× binning → divide by 2 to get pixel coords
-        float px = rx / 2.0f;
-        float py = ry / 2.0f;
+        // Map the output distributions back to network input pixels.
+        float px = rx * netW / static_cast<float>(Xbins);
+        float py = ry * netH / static_cast<float>(Ybins);
 
         // Confidence: geometric mean of peak sigmoid scores
         float conf = std::sqrt(sigmoid(rowX[mx]) * sigmoid(rowY[my]));
@@ -104,21 +104,34 @@ static bool NvDsInferParseCustomRtmpose(
         return false;
     }
 
-    // RTMPose-m constants (hardcoded: TensorRT may rename output tensors)
-    static constexpr int K = 17;       // COCO keypoints
-    static constexpr int Xbins = 384;  // 2 * input_w (192)
-    static constexpr int Ybins = 512;  // 2 * input_h (256)
-
     // Use index-based assignment: assume layer 0 = simcc_x, layer 1 = simcc_y
     // (TensorRT may rename outputs, so name matching can fail.)
+    const auto& xDims = outputLayersInfo[0].inferDims;
+    const auto& yDims = outputLayersInfo[1].inferDims;
+    if (xDims.numDims < 3 || yDims.numDims < 3) {
+        std::cerr << "[Rtmpose] ERROR: expected rank-3 SimCC outputs" << std::endl;
+        return false;
+    }
+
+    const int batchSize = static_cast<int>(xDims.d[0]);
+    const int K = static_cast<int>(xDims.d[1]);
+    const int Xbins = static_cast<int>(xDims.d[2]);
+    const int yBatchSize = static_cast<int>(yDims.d[0]);
+    const int yK = static_cast<int>(yDims.d[1]);
+    const int Ybins = static_cast<int>(yDims.d[2]);
+    if (batchSize <= 0 || K <= 0 || Xbins <= 0 || Ybins <= 0 ||
+        batchSize != yBatchSize || K != yK ||
+        networkInfo.width == 0 || networkInfo.height == 0) {
+        std::cerr << "[Rtmpose] ERROR: incompatible SimCC output shapes"
+                  << std::endl;
+        return false;
+    }
+
     const float* simccXBuf = static_cast<const float*>(outputLayersInfo[0].buffer);
     const float* simccYBuf = static_cast<const float*>(outputLayersInfo[1].buffer);
-    int batchSize = 1;
-
-    // Infer batch from the first layer's dims
-    if (outputLayersInfo[0].inferDims.numDims >= 3) {
-        int B = static_cast<int>(outputLayersInfo[0].inferDims.d[0]);
-        if (B > 0) batchSize = B;
+    if (simccXBuf == nullptr || simccYBuf == nullptr) {
+        std::cerr << "[Rtmpose] ERROR: null SimCC output buffer" << std::endl;
+        return false;
     }
 
     const float netW = static_cast<float>(networkInfo.width);
