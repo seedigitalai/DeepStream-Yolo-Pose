@@ -108,17 +108,35 @@ static bool NvDsInferParseCustomRtmpose(
     // (TensorRT may rename outputs, so name matching can fail.)
     const auto& xDims = outputLayersInfo[0].inferDims;
     const auto& yDims = outputLayersInfo[1].inferDims;
-    if (xDims.numDims < 3 || yDims.numDims < 3) {
-        std::cerr << "[Rtmpose] ERROR: expected rank-3 SimCC outputs" << std::endl;
+
+    // DeepStream removes the explicit batch axis from NvDsInferLayerInfo,
+    // while direct parser tests and some integrations retain it. Normalize
+    // both [K, bins] and [B, K, bins] to one internal representation.
+    const auto parseShape = [](const NvDsInferDims& dims,
+                               int& batch, int& keypoints, int& bins) {
+        if (dims.numDims == 2) {
+            batch = 1;
+            keypoints = static_cast<int>(dims.d[0]);
+            bins = static_cast<int>(dims.d[1]);
+            return true;
+        }
+        if (dims.numDims == 3) {
+            batch = static_cast<int>(dims.d[0]);
+            keypoints = static_cast<int>(dims.d[1]);
+            bins = static_cast<int>(dims.d[2]);
+            return true;
+        }
+        return false;
+    };
+
+    int batchSize = 0, K = 0, Xbins = 0;
+    int yBatchSize = 0, yK = 0, Ybins = 0;
+    if (!parseShape(xDims, batchSize, K, Xbins) ||
+        !parseShape(yDims, yBatchSize, yK, Ybins)) {
+        std::cerr << "[Rtmpose] ERROR: expected rank-2 or rank-3 SimCC outputs"
+                  << std::endl;
         return false;
     }
-
-    const int batchSize = static_cast<int>(xDims.d[0]);
-    const int K = static_cast<int>(xDims.d[1]);
-    const int Xbins = static_cast<int>(xDims.d[2]);
-    const int yBatchSize = static_cast<int>(yDims.d[0]);
-    const int yK = static_cast<int>(yDims.d[1]);
-    const int Ybins = static_cast<int>(yDims.d[2]);
     if (batchSize <= 0 || K <= 0 || Xbins <= 0 || Ybins <= 0 ||
         batchSize != yBatchSize || K != yK ||
         networkInfo.width == 0 || networkInfo.height == 0) {
